@@ -97,3 +97,30 @@ add_test(
     NAME eagler-common.direct-touch-pipeline
     COMMAND eagler_common_direct_touch_pipeline_test
 )
+
+add_executable(eagler_common_input_repair_budget_test
+    input-repair-budget-test.cpp
+)
+target_link_libraries(eagler_common_input_repair_budget_test PRIVATE
+    eagler::netplay_headers
+)
+add_test(
+    NAME eagler-common.input-repair-budget
+    COMMAND eagler_common_input_repair_budget_test
+)
+
+add_test(
+    NAME eagler-common.input-repair-source-contract
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/../src/netplay/BrowserPeerTransport.cpp
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/browser-peer-repair-source-test.cmake
+)
+
+find_program(EAGLER_COMMON_NODE_EXECUTABLE NAMES node node.exe)
+if(EAGLER_COMMON_NODE_EXECUTABLE)
+    add_test(
+        NAME eagler-common.rtc-input-impairment
+        COMMAND ${EAGLER_COMMON_NODE_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/rtc-input-impairment-test.cjs
+    )
+endif()

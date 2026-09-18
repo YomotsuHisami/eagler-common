@@ -156,6 +156,24 @@ def check_consumer(name: str, source_var: str, magic: str, transport_tag: str) -
         and "src/netplay/NetplayInput.cpp" not in cmake,
         f"{name}: common netplay authority still compiles from a title-local implementation",
     )
+    title = "Th06" if name.startswith("th06") else "Th07"
+    driver = read(root / "src/netplay" / f"{title}LanStageProbe.cpp")
+    require(
+        "#include <eagler/netplay/InputRepairBudget.hpp>" in driver,
+        f"{name}: reliable input repair does not consume the common header directly",
+    )
+    require(
+        not (root / "src/netplay/InputRepairBudget.hpp").exists(),
+        f"{name}: title-local InputRepairBudget compatibility shim must not be reintroduced",
+    )
+    require(
+        not (root / "tests/rtc-input-impairment.cjs").exists(),
+        f"{name}: RTC impairment fixture must come from eagler-common/testkit",
+    )
+    require(
+        (submodule_path / "testkit/rtc-input-impairment.cjs").is_file(),
+        f"{name}: shared RTC impairment testkit is missing from the pinned common revision",
+    )
 
 
 def main() -> None:
@@ -173,6 +191,8 @@ def main() -> None:
         "src/netplay/BrowserPeerTransport.cpp",
         "include/eagler/netplay/NetplayInput.hpp",
         "src/netplay/NetplayInput.cpp",
+        "include/eagler/netplay/InputRepairBudget.hpp",
+        "testkit/rtc-input-impairment.cjs",
         "cmake/EaglerCommon.cmake",
     ):
         require((COMMON / relative).is_file(), f"missing common file: {relative}")
@@ -189,6 +209,11 @@ def main() -> None:
     require(
         "add_library(eagler::netplay_input ALIAS eagler_common_netplay_input)" in common_cmake,
         "common netplay input component target is missing",
+    )
+    peer_header = read(COMMON / "include/eagler/netplay/BrowserPeerTransport.hpp")
+    require(
+        "SendRepairTo" in peer_header,
+        "common browser peer transport does not expose bounded reliable repair",
     )
 
     check_consumer("th06-eagler", "TH06_SOURCES", "6", "th06")
