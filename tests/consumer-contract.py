@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Guard the first TH06/TH07 common-runtime convergence slice."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+
+COMMON = Path(__file__).resolve().parents[1]
+WORKSPACE = COMMON.parent
+
+
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def check_consumer(name: str, source_var: str) -> None:
+    root = WORKSPACE / name
+    cmake = read(root / "CMakeLists.txt")
+    require(
+        "include(\"${EAGLER_COMMON_ROOT}/cmake/EaglerCommon.cmake\")" in cmake,
+        f"{name}: common CMake component is not loaded",
+    )
+    require(
+        "eagler_common_link_netplay_base(${TH_EXEC_NAME})" in cmake,
+        f"{name}: common netplay target is not linked",
+    )
+    require(
+        f"eagler_common_append_netplay_base_sources({source_var})" not in cmake
+        and "eagler_common_add_include_path(${TH_EXEC_NAME})" not in cmake,
+        f"{name}: legacy source/include wiring remains",
+    )
+    for stem in ("NetplaySession", "WebSocketTransport"):
+        header = read(root / "src/netplay" / f"{stem}.hpp")
+        source = read(root / "src/netplay" / f"{stem}.cpp")
+        require(
+            f"#include <eagler/netplay/{stem}.hpp>" in header,
+            f"{name}: {stem} header is not a forwarding shim",
+        )
+        require(
+            "implementation authority lives in eagler-common" in header,
+            f"{name}: {stem} header does not document common authority",
+        )
+        require(
+            "CMake compiles the eagler-common implementation source" in source,
+            f"{name}: {stem} source is not a compatibility marker",
+        )
+        code_lines = [
+            line
+            for line in source.splitlines()
+            if line.strip() and not line.lstrip().startswith("//")
+        ]
+        require(not code_lines, f"{name}: {stem} compatibility source contains implementation code")
+
+
+def main() -> None:
+    for relative in (
+        "CMakeLists.txt",
+        "include/eagler/netplay/NetplaySession.hpp",
+        "src/netplay/NetplaySession.cpp",
+        "include/eagler/netplay/WebSocketTransport.hpp",
+        "src/netplay/WebSocketTransport.cpp",
+        "cmake/EaglerCommon.cmake",
+    ):
+        require((COMMON / relative).is_file(), f"missing common file: {relative}")
+
+    common_cmake = read(COMMON / "CMakeLists.txt")
+    require(
+        "add_library(eagler::netplay_base ALIAS eagler_common_netplay_base)" in common_cmake,
+        "common netplay component target is missing",
+    )
+
+    check_consumer("th06-eagler", "TH06_SOURCES")
+    check_consumer("th07-eagler", "SOURCES")
+    print("eagler-common consumer contract: PASS (TH06/TH07 first slice)")
+
+
+if __name__ == "__main__":
+    main()

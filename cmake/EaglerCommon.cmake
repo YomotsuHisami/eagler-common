@@ -1,0 +1,18 @@
+include_guard(GLOBAL)
+
+get_filename_component(_EAGLER_COMMON_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+
+if(NOT TARGET eagler_common_netplay_base)
+    add_subdirectory(
+        "${_EAGLER_COMMON_ROOT}"
+        "${CMAKE_BINARY_DIR}/_deps/eagler-common"
+        EXCLUDE_FROM_ALL
+    )
+endif()
+
+function(eagler_common_link_netplay_base target)
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR "eagler_common_link_netplay_base: unknown target ${target}")
+    endif()
+    target_link_libraries(${target} PRIVATE eagler::netplay_base)
+endfunction()
