@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 
 COMMON = Path(__file__).resolve().parents[1]
 WORKSPACE = COMMON.parent
+COMMON_URL = "https://github.com/YomotsuHisami/eagler-common.git"
 
 
 def read(path: Path) -> str:
@@ -19,9 +21,37 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def git(root: Path, *args: str) -> str:
+    return subprocess.check_output(
+        ["git", *args], cwd=root, text=True, encoding="utf-8"
+    ).strip()
+
+
 def check_consumer(name: str, source_var: str) -> None:
     root = WORKSPACE / name
     cmake = read(root / "CMakeLists.txt")
+    gitmodules = read(root / ".gitmodules")
+    submodule_path = root / "third_party" / "eagler-common"
+
+    require(
+        '[submodule "third_party/eagler-common"]' in gitmodules
+        and "path = third_party/eagler-common" in gitmodules
+        and f"url = {COMMON_URL}" in gitmodules,
+        f"{name}: canonical eagler-common submodule declaration is missing",
+    )
+    gitlink = git(root, "ls-files", "--stage", "third_party/eagler-common")
+    fields = gitlink.split()
+    require(
+        len(fields) >= 2 and fields[0] == "160000",
+        f"{name}: eagler-common is not recorded as a Git submodule gitlink",
+    )
+    require(submodule_path.is_dir(), f"{name}: eagler-common submodule is not checked out")
+    checkout = git(submodule_path, "rev-parse", "HEAD")
+    require(
+        fields[1] == checkout,
+        f"{name}: checked-out eagler-common revision does not match the pinned gitlink",
+    )
+
     require(
         "include(\"${EAGLER_COMMON_ROOT}/cmake/EaglerCommon.cmake\")" in cmake,
         f"{name}: common CMake component is not loaded",
