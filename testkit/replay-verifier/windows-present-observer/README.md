@@ -1,28 +1,13 @@
-# Windows D3D8 Present observer
+# Windows D3D8 Present 观察器
 
-This test-only proxy forwards `Direct3DCreate8` to the system D3D8 runtime and
-records fixed-address replay state at the retail executable's `Present` boundary. It
-does not write game memory, synthesize input, alter Replay/RNG/timing state, or
-select a Demo or ordinary Replay. Build a game-specific 32-bit DLL with `build.ps1`; copy only the
-resulting `d3d8.dll` beside an isolated oracle copy of the retail game.
-If the retail D3D8 runtime cannot create a device, an unmodified
-`crosire/d3d8to9` binary may be placed beside it as `d3d8to9.dll`; the observer
-chains to that compatibility layer before installing the same Present hook.
+这是 Windows 原版观察工具。32 位代理 DLL 转发系统 Direct3DCreate8，在 Present 边界读取固定地址的 Replay 状态。它不修改游戏内存，不合成输入，不改变 RNG/计时，也不自动选择 Demo 或 Replay。
 
-The output `replay-verifier-present.bin` is an append-only stream of 64-byte
-rows. Inactive rows are retained so consumers can prove Demo boundaries rather
-than infer them by trimming gameplay data.
+用 `build.ps1` 构建对应游戏的 DLL，只把产物放到隔离的原版副本旁。此入口依赖 Windows 原生工具，属于保留 PowerShell 的平台适配。必要时可链到未修改的 d3d8to9 兼容二进制。
 
-`windows-present-capture.py` checks the retail configuration before launching:
-the exact size/version and option ranges must be valid, and windowed mode must
-be selected. TH06's ANSI configuration filename is resolved using the Windows
-code page. A missing or invalid configuration is an error, because the retail
-fallback is fullscreen. Locale wrappers need a verified child code-page profile
-before this launcher can support them safely.
+输出 `replay-verifier-present.bin` 为追加的 64 字节记录流，保留非活跃记录以确认 Demo 边界。只加载 DLL 不代表 hook 成功，捕获必须观察到有效且前进的记录。
 
-Loading the observer DLL does not prove that Present is hooked. The injector
-reports a load timeout as an error; a capture must separately observe valid,
-advancing rows. TH07 late injection is not currently implemented in DllMain;
-its supported observer path is the startup D3D8 proxy. Ordinary retail replay
-automation and its completion checks remain unfinished. Posting keyboard
-messages to a hidden window is not a verified input provider for these games.
+`windows-present-capture.py` 在启动前校验配置大小、版本、范围和窗口模式。TH06 ANSI 配置名按 Windows 代码页解析；缺失配置不能静默退回全屏。Locale 包装器需要已验证的子进程代码页配置。
+
+TH07 尚未实现 DllMain 晚注入；支持路径是启动时加载 D3D8 代理。普通原版 Replay 的输入自动化和完成判定仍未完成，向隐藏窗口发送键盘消息不构成已验证输入提供器。
+
+该观察器本轮未执行原版捕获。报告只能描述实际读到的边界和字段，不能据此宣称完整游戏一致。

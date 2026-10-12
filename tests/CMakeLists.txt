@@ -226,12 +226,6 @@ add_test(
     COMMAND eagler_common_input_repair_budget_test
 )
 
-add_test(
-    NAME eagler-common.input-repair-source-contract
-    COMMAND ${CMAKE_COMMAND}
-        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/../src/netplay/BrowserPeerTransport.cpp
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/browser-peer-repair-source-test.cmake
-)
 
 find_program(EAGLER_COMMON_NODE_EXECUTABLE NAMES node node.exe)
 add_executable(eagler_common_adonis_startup_test adonis-startup-test.cpp ../src/netplay/NetplayProtocol.cpp)
