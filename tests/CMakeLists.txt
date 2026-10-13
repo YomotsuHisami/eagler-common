@@ -260,3 +260,11 @@ if(EAGLER_COMMON_NODE_EXECUTABLE)
             ${CMAKE_CURRENT_SOURCE_DIR}/../testkit/replay-verifier/replay-verifier.test.mjs
     )
 endif()
+
+add_executable(eagler_common_motion_track_test motion-track-test.cpp)
+target_link_libraries(eagler_common_motion_track_test PRIVATE eagler::headers)
+add_test(NAME eagler-common.motion-track COMMAND eagler_common_motion_track_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+add_executable(eagler_common_graphics_state_test graphics-state-test.cpp)
+target_link_libraries(eagler_common_graphics_state_test PRIVATE eagler::headers)
+add_test(NAME eagler-common.graphics-state COMMAND eagler_common_graphics_state_test)

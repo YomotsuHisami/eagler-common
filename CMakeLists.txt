@@ -9,11 +9,12 @@ project(eagler-common VERSION 0.16.0 LANGUAGES CXX)
 add_library(eagler_common_netplay_headers INTERFACE)
 add_library(eagler::netplay_headers ALIAS eagler_common_netplay_headers)
 
-target_include_directories(eagler_common_netplay_headers INTERFACE
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-)
-
-target_compile_features(eagler_common_netplay_headers INTERFACE cxx_std_17)
+add_library(eagler_common_headers INTERFACE)
+add_library(eagler::headers ALIAS eagler_common_headers)
+target_include_directories(eagler_common_headers INTERFACE
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+target_compile_features(eagler_common_headers INTERFACE cxx_std_17)
+target_link_libraries(eagler_common_netplay_headers INTERFACE eagler::headers)
 
 # File codec only: input types, not a title layout or a transport dependency.
 add_library(eagler_common_input_replay INTERFACE)
