@@ -1,0 +1,33 @@
+{
+  "base": "767222ad534830bf177827c718146bce7a8abf8c",
+  "kind": "non-Git validation dependency export",
+  "transportPatchSha256": "4621fefeada34188d6ba772d49799e201d73c7d760d250d25eb53f01d3a116d2",
+  "overlaySha256": {
+    "include/eagler/netplay/BrowserPeerTransport.hpp": "b07ef767c3b20ea6a645343e24a05ff44632e694266c6a3aca7c6ac14df816c5",
+    "include/eagler/netplay/SpectatorStageScalars.hpp": "37932b281c78cc539d17676f4143ea9bccf176af1d272c453c2da3ba96b7f1ef",
+    "include/eagler/netplay/AdonisSpectatorTiming.hpp": "fdb79825184839276a8669a7ea8cf67d22b7334f59ab63d067c43c4679c91d3d",
+    "include/eagler/netplay/SpectatorStagePlayback.hpp": "cdda2ecc026fcd5c79906399391e0312e1040228f4ff0bad68729b29737dda82",
+    "include/eagler/netplay/ConfirmedInputClock.hpp": "1dd39e37dc8cf40584329f73e680a0d7098cdd1c277363a0c1fb905432119208",
+    "src/netplay/BrowserPeerTransport.cpp": "bb580423a0abeabceda8f441086a7bdd8b26c57eb6ce46c62d976ab67fcbbc9e",
+    "include/eagler/netplay/SpectatorStageHistory.hpp": "e7b3112ac3ed8c3f4593d6965e81a2888fb0e8b2c9352d3bf7e9850238077bcf",
+    "include/eagler/netplay/SpectatorStagePublisher.hpp": "70f956ab4dee764a67c766547d6b9d03b5011a081ed69ad13b9a5aac3cf4fed9",
+    "include/eagler/netplay/SpectatorStageProtocol.hpp": "e278c2e8b715b6e93131a7d0120729da8d4d62dcc815de7267fee207460fe4ae",
+    "include/eagler/netplay/SpectatorStageView.hpp": "ce68b5c2ea87353fd5924685d117a69f423c6aa7977cd2be73e7ce48dcc548ee"
+  },
+  "notes": "Validation export preserves the unavailable MP submodule baseline. Includes stage history/transport, owned input journal, pure-delay TH15 timing and pause-preserving seek. No managed Git worktree or dependency pin change.",
+  "followUpOverlays": [
+    {
+      "file": "include/eagler/netplay/SpectatorStagePlayback.hpp",
+      "source": "D:/workspace/eagler/eagler-common/include/eagler/netplay/SpectatorStagePlayback.hpp",
+      "sha256": "2c8b34bcae839d7fb26ba29058b62db9adee95f6067b61ac604d0c222f23d110",
+      "reason": "Adds WaitingForLiveInput() for the spectator no-input watchdog; copied verbatim from shared common after the preserved base overlay."
+    }
+  ],
+  "automaticStageFollowing": {
+    "scope": "local shared Playback overlay; no TH09 native change",
+    "file": "include/eagler/netplay/SpectatorStagePlayback.hpp",
+    "sha256": "dc491f3c200414a203df7dbe83bcdd2453467fc6ad486a1bf1785c95b637d9fc",
+    "source": "D:/workspace/eagler/eagler-common/include/eagler/netplay/SpectatorStagePlayback.hpp",
+    "stateMachineReceipt": "D:/workspace/eagler/.codex-tmp/spectator-following-segment-20261017/receipt.json"
+  }
+}
