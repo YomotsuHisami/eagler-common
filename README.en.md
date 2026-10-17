@@ -12,6 +12,6 @@ cmake --build build/tests --config Release
 ctest --test-dir build/tests -C Release --output-on-failure
 ```
 
-The engineering audit ran 32 native CTest cases on Windows. Consumer browser and gameplay acceptance is separate. Games pin their own common revision; upgrading this checkout does not upgrade those consumers.
+The Windows native build passed 34 CTest cases, including graphics state and motion-record formats. Consumer browser and gameplay acceptance is separate. Games pin their own common revision; upgrading this checkout does not upgrade those consumers. The maintenance guide records the extracted portable code's sources and compatibility limits.
 
 Maintenance documentation is in Chinese: [maintenance](docs/MAINTENANCE.md), [browser bridges](browser/README.md), [input Replay format](docs/input-replay.md), [Presentation Lab](testkit/presentation-lab/README.md), and [Replay Verifier](testkit/replay-verifier/README.md).

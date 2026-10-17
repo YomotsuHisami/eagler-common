@@ -6,6 +6,16 @@
 
 游戏拥有完整状态快照及恢复。common 不枚举 Bullet、Enemy、ECL、Stage 等对象，也不因状态摘要相等就自行认定两个历史输入等价。抽取公共代码应先核对实际消费者，升级分别验证普通和多人行为。
 
+## 图形与触控记录适配
+
+`include/eagler/graphics/` 与 `include/eagler/input/MotionTrack.hpp` 从既有 portable 适配层抽取，不包含原作关卡、弹幕或角色规则。来源基线是 `YomotsuHisami/th08@e8e94e2`、`th09@9cc38d1`、`th10@635c920`、`th11@38e8c1c`、`th15@56abb4b` 的 `portable/sdl/` 和 `portable/input/`。TH15 中这些文件随 `ff00397` 导入；其仓库 MIT 通知中的 SteinsGateON 署名保留在本库 [LICENSE](../LICENSE) 中。
+
+图形接口沿用原 `touhou::graphics` 命名空间和数值映射，GLSL 字符串保持不变。共享 `PipelineState` 包含 TH15 原有的独立 alpha 混合字段；其他作品的默认值不变，但内部结构布局已经扩展，不提供与旧对象文件混用的 ABI 承诺。消费者须重新编译，不得将整个结构的内存布局作为文件或网络格式。
+
+`MotionTrack<true>` 用于 TH08/TH10/TH11 的移动与触摸事件记录；TH09/TH15 使用 `<false>`，仍只接受该记录格式的 v1。TH09 的 20-stage `TouchMotionTrack` 是另一个格式，未由这里替换。记录编码明确采用小端序，不依赖宿主结构体布局；v1/v2 文件兼容由 `motion-track-test.cpp` 的独立样本和往返用例验证，不代表原版 Replay 或整作玩法已验收。
+
+消费者可在原锁定 common 上只引入这些头文件及其来源通知，不必同时升级 netplay 核心。更新前后须核对实际 gitlink 和变更集合；公共库单元测试通过不能替代各作构建与相关运行验证。
+
 ## 输入与回滚
 
 `RollbackCore::ApplyInputPacket` 先验证完整包，再修改输入、ACK 和回滚前沿。矛盾冗余样本、无效模拟量、不可能 ACK 和破坏未来环槽的包必须事务性拒绝。过期重传和非法输入是不同结果。

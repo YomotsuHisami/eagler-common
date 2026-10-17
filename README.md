@@ -18,7 +18,7 @@ cmake --build build/tests --config Release
 ctest --test-dir build/tests -C Release --output-on-failure
 ```
 
-本轮 Windows 原生构建执行 32 项 CTest，通过范围以各测试实现为准。消费者的浏览器、游戏规则和资源验收需要在对应游戏单独执行。
+Windows 原生构建已执行 34 项 CTest，包括图形状态与移动记录格式；通过范围以各测试实现为准。消费者的浏览器、游戏规则和资源验收需要在对应游戏单独执行。
 
 ## 文档
 
