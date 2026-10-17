@@ -16,6 +16,26 @@ EM_JS(void, eagler_journal_copy_bytes, (void *destination, const void *source, s
         throw new RangeError('rollback copy outside WASM memory');
     HEAPU8.copyWithin(to, from, from + length);
 });
+// The block table stays in WASM memory. One boundary crossing captures or
+// restores all regions, including the small fields that otherwise hit the
+// compatibility memcpy loop. Views are resolved after any arena/memory growth.
+EM_JS(void, eagler_journal_copy_blocks,
+      (void *arena, const void *blocks, std::size_t count, std::size_t stride, bool restore), {
+    const bytes = HEAPU8, words = HEAPU32;
+    const base = arena >>> 0, table = blocks >>> 0, n = count >>> 0, step = stride >>> 0;
+    if (n && (!table || step < 12 || (step & 3) || table > bytes.length ||
+              n > Math.floor((bytes.length - table) / step)))
+        throw new RangeError('rollback block table outside WASM memory');
+    for (let j = 0; j < n; ++j) {
+        const i = restore ? n - 1 - j : j, at = (table + i * step) >>> 2;
+        const address = words[at], offset = words[at + 1], length = words[at + 2];
+        const saved = base + offset, to = restore ? address : saved, from = restore ? saved : address;
+        if (length > bytes.length || from > bytes.length - length ||
+            to > bytes.length - length || (length && (!from || !to)))
+            throw new RangeError('rollback block outside WASM memory');
+        bytes.copyWithin(to, from, from + length);
+    }
+});
 #endif
 
 namespace Netplay
@@ -114,7 +134,7 @@ RollbackJournal::FrameRecord &RollbackJournal::BackRecord()
     return frames_[(firstFrame_ + frameCount_ - 1) % frames_.size()];
 }
 
-void RollbackJournal::EnsureByteCapacity(FrameRecord &record, std::size_t required)
+void RollbackJournal::EnsureByteCapacity(FrameRecord &record, std::size_t required, std::size_t preserved)
 {
     if (required <= record.byteCapacity)
         return;
@@ -125,8 +145,8 @@ void RollbackJournal::EnsureByteCapacity(FrameRecord &record, std::size_t requir
             ? capacity * 2 : config_.maxBytesPerFrame;
     std::unique_ptr<std::uint8_t[]> bytes(new std::uint8_t[capacity]);
     ++arenaGrowths_;
-    if (record.byteSize != 0)
-        CopyBytes(bytes.get(), record.bytes.get(), record.byteSize);
+    if (preserved != 0)
+        CopyBytes(bytes.get(), record.bytes.get(), preserved);
     record.bytes = std::move(bytes);
     record.byteCapacity = capacity;
 }
@@ -184,7 +204,7 @@ std::uint32_t RollbackJournal::RebalanceBlock(FrameRecord &record, std::uint32_t
     return root;
 }
 
-bool RollbackJournal::Touch(void *address, std::size_t size)
+bool RollbackJournal::RegisterBlock(void *address, std::size_t size)
 {
     FrameRecord *record = CurrentRecord();
     if (!record || failed_ || address == nullptr || size == 0)
@@ -244,8 +264,6 @@ bool RollbackJournal::Touch(void *address, std::size_t size)
     }
 
     const std::size_t offset = record->byteSize;
-    EnsureByteCapacity(*record, offset + size);
-    CopyBytes(record->bytes.get() + offset, address, size);
     record->byteSize += size;
     const auto inserted = static_cast<std::uint32_t>(record->blocks.size());
     record->blocks.push_back(Block{start, offset, size});
@@ -275,6 +293,67 @@ bool RollbackJournal::Touch(void *address, std::size_t size)
         if (record->blocks[balanced].height == previousHeight)
             break;
     }
+    return true;
+}
+
+bool RollbackJournal::Touch(void *address, std::size_t size)
+{
+    FrameRecord *record = CurrentRecord();
+    if (!record || failed_)
+        return false;
+    const std::size_t before = record->byteSize;
+    if (!RegisterBlock(address, size))
+        return false;
+    if (record->byteSize != before)
+    {
+        EnsureByteCapacity(*record, record->byteSize, before);
+        CopyBytes(record->bytes.get() + before, address, size);
+    }
+    return true;
+}
+
+void RollbackJournal::CopyBlocks(FrameRecord &record, std::size_t first, bool restore)
+{
+    const std::size_t count = record.blocks.size() - first;
+    if (count == 0)
+        return;
+#if defined(__EMSCRIPTEN__) && !defined(__wasm64__)
+    static_assert(offsetof(Block, address) == 0 && offsetof(Block, offset) == 4 &&
+                  offsetof(Block, size) == 8 && sizeof(Block) % 4 == 0,
+                  "bulk journal table requires the wasm32 block layout");
+    if (config_.fastBulkCopy)
+    {
+        eagler_journal_copy_blocks(record.bytes.get(), record.blocks.data() + first,
+                                   count, sizeof(Block), restore);
+        return;
+    }
+#endif
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const Block &block = record.blocks[restore ? record.blocks.size() - 1 - i : first + i];
+        void *live = reinterpret_cast<void *>(block.address);
+        void *saved = record.bytes.get() + block.offset;
+        CopyBytes(restore ? live : saved, restore ? saved : live, block.size);
+    }
+}
+
+bool RollbackJournal::TouchMany(const RollbackMemoryRegion *regions, std::size_t count)
+{
+    FrameRecord *record = CurrentRecord();
+    if (!record || failed_ || (!regions && count != 0))
+        return false;
+    const std::size_t before = record->byteSize, first = record->blocks.size();
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        if (!RegisterBlock(regions[i].address, regions[i].size))
+        {
+            // Earlier entries may have registered offsets without copying.
+            failed_ = true;
+            return false;
+        }
+    }
+    EnsureByteCapacity(*record, record->byteSize, before);
+    CopyBlocks(*record, first, false);
     return true;
 }
 
@@ -319,6 +398,15 @@ bool RollbackJournal::UndoTo(std::uint32_t frame, std::uint32_t *restoredFrame)
     while (frameCount_ != 0 && BackRecord().endFrame >= checkpointStart)
     {
         FrameRecord &record = BackRecord();
+        if (!config_.coalesceRestore || frameCount_ == targetIndex + 1)
+        {
+            // The oldest restored record has no older covering record. Its
+            // complete scatter is also the common single-checkpoint case.
+            CopyBlocks(record, 0, true);
+            restoreCopiedBytes_ += record.byteSize;
+            --frameCount_;
+            continue;
+        }
         for (auto it = record.blocks.rbegin(); it != record.blocks.rend(); ++it)
         {
             const Block &block = *it;

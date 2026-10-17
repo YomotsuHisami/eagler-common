@@ -1,10 +1,15 @@
 #include <eagler/netplay/RollbackJournal.hpp>
 
 #include <array>
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <limits>
 #include <vector>
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/heap.h>
+#endif
 
 using Netplay::RollbackJournal;
 using Netplay::RollbackJournalConfig;
@@ -281,6 +286,92 @@ static void TestArenaGrowthPreservesCapturedBytes()
     assert(journal.BeginFrame(0) && journal.EndFrame());
 }
 
+static void TestBatchedCaptureAndGrowth()
+{
+    constexpr std::size_t bytes = 96 * 1024;
+    for (bool fast : {false, true})
+    for (bool coalesce : {false, true})
+    {
+        RollbackJournal journal;
+        assert(journal.Reset({3, bytes * 5, 8, fast, coalesce}));
+        std::vector<unsigned char> world(bytes * 5);
+        for (std::size_t i = 0; i < world.size(); ++i)
+            world[i] = static_cast<unsigned char>(i * 73 + i / 997);
+        const auto original = world;
+        assert(journal.BeginFrame(10));
+        assert(journal.Touch(world.data(), bytes));
+        std::fill(world.begin(), world.begin() + bytes, 37);
+        const Netplay::RollbackMemoryRegion regions[] = {
+            {world.data(), bytes}, {world.data() + 3 * bytes, bytes},
+            {world.data() + bytes, bytes}, {world.data() + 3 * bytes, bytes}
+        };
+        assert(journal.TouchMany(nullptr, 0));
+        assert(journal.TouchMany(regions, 4));
+        assert(journal.BlocksForFrame(10) == 3);
+        assert(journal.BytesForFrame(10) == 3 * bytes);
+        std::fill(world.begin() + bytes, world.begin() + 2 * bytes, 99);
+        std::fill(world.begin() + 3 * bytes, world.begin() + 4 * bytes, 99);
+        assert(journal.TouchMany(regions, 4));
+        assert(journal.Touch(world.data() + 4 * bytes, bytes));
+        std::fill(world.begin() + 4 * bytes, world.end(), 111);
+        assert(journal.EndFrame());
+        assert(journal.BeginFrame(11, true));
+        const Netplay::RollbackMemoryRegion extension[] = {
+            {world.data() + 2 * bytes, bytes}, {world.data(), bytes}
+        };
+        assert(journal.TouchMany(extension, 2));
+        std::fill(world.begin(), world.end(), 55);
+        assert(journal.EndFrame());
+        assert(journal.BeginFrame(12));
+        const Netplay::RollbackMemoryRegion newer[] = {
+            // Full and partial coverage by the older frame exercise both
+            // scatter and the ordered coalescing path.
+            {world.data(), bytes}, {world.data() + bytes / 2 + bytes, bytes}
+        };
+        assert(journal.TouchMany(newer, 2));
+        std::fill(world.begin(), world.begin() + bytes, 3);
+        std::fill(world.begin() + bytes + bytes / 2, world.begin() + 2 * bytes + bytes / 2, 7);
+        assert(journal.EndFrame());
+#if defined(__EMSCRIPTEN__)
+        if (fast)
+            assert(emscripten_resize_heap(emscripten_get_heap_size() + 16 * 1024 * 1024));
+#endif
+        std::uint32_t restored = 99;
+        assert(journal.UndoTo(11, &restored));
+        assert(restored == 10 && world == original);
+        assert(journal.BeginFrame(10));
+        assert(journal.TouchMany(regions, 4));
+        std::fill(world.begin(), world.begin() + bytes, 12);
+        assert(journal.EndFrame() && journal.UndoTo(10));
+        assert(world == original);
+    }
+}
+
+static void TestBatchFailureCannotRestoreUncopiedBlocks()
+{
+    std::array<unsigned char, 64> world{};
+    for (unsigned failure = 0; failure < 5; ++failure)
+    {
+        auto journal = MakeJournal(1, 64, failure == 4 ? 1 : 4);
+        assert(journal.BeginFrame(1));
+        Netplay::RollbackMemoryRegion regions[] = {{world.data(), 16}, {world.data() + 32, 16}};
+        if (failure == 0) regions[1] = {world.data() + 8, 16};
+        if (failure == 1) regions[1] = {nullptr, 16};
+        if (failure == 2) regions[1] = {world.data() + 32, 0};
+        if (failure == 3) regions[1] = {reinterpret_cast<void *>(std::numeric_limits<std::uintptr_t>::max() - 3), 8};
+        assert(!journal.TouchMany(regions, 2));
+        assert(journal.Failed());
+        assert(!journal.EndFrame() && !journal.UndoTo(1));
+        assert(journal.Reset({1, 64, 4}));
+        assert(journal.BeginFrame(1));
+        const Netplay::RollbackMemoryRegion valid{world.data(), world.size()};
+        assert(journal.TouchMany(&valid, 1));
+        world.fill(77);
+        assert(journal.EndFrame() && journal.UndoTo(1));
+        for (auto byte : world) assert(byte == 0);
+    }
+}
+
 static void TestSnapshotFloatPairPatch()
 {
     struct State { float x, y; int marker; } state{1.0f, 2.0f, 7};
@@ -389,6 +480,8 @@ int main()
     TestAddressOverflowIsRejectedBeforeCopy();
     TestOrderedAndScatteredIndex();
     TestArenaGrowthPreservesCapturedBytes();
+    TestBatchedCaptureAndGrowth();
+    TestBatchFailureCannotRestoreUncopiedBlocks();
     TestSnapshotFloatPairPatch();
     TestRandomizedHistoryAgainstFullCopyReference();
     std::puts("eagler-common rollback journal: PASS");

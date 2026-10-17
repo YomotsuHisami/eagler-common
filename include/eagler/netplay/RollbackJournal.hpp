@@ -17,6 +17,12 @@ struct RollbackJournalConfig
     bool coalesceRestore = false;
 };
 
+struct RollbackMemoryRegion
+{
+    void *address;
+    std::size_t size;
+};
+
 // Bounded first-write-wins undo storage for logical simulation checkpoints.
 // Touch() must be called before a region is mutated. Exact duplicate touches
 // are ignored; partial overlaps are rejected so restore order never becomes an
@@ -30,6 +36,11 @@ public:
 
     bool BeginFrame(std::uint32_t frame, bool extendPrevious = false);
     bool Touch(void *address, std::size_t size);
+    // Capture stable, non-owning regions synchronously in one batch. Sources
+    // must remain unchanged throughout this call. Duplicate/overlap rules are
+    // identical to Touch, including regions already touched in this frame.
+    // A failed batch poisons the frame; partially registered bytes cannot undo.
+    bool TouchMany(const RollbackMemoryRegion *regions, std::size_t count);
     bool EndFrame();
 
     // Restore the state immediately before the checkpoint containing `frame`
@@ -87,8 +98,10 @@ private:
     FrameRecord *CurrentRecord();
     FrameRecord &BackRecord();
     const FrameRecord *FindFrame(std::uint32_t frame) const;
-    void EnsureByteCapacity(FrameRecord &record, std::size_t required);
+    bool RegisterBlock(void *address, std::size_t size);
+    void EnsureByteCapacity(FrameRecord &record, std::size_t required, std::size_t preserved);
     void CopyBytes(void *destination, const void *source, std::size_t size);
+    void CopyBlocks(FrameRecord &record, std::size_t first, bool restore);
     static bool CoversBlock(const FrameRecord &record, const Block &block);
     static int Height(const FrameRecord &record, std::uint32_t index);
     static void UpdateHeight(FrameRecord &record, std::uint32_t index);
