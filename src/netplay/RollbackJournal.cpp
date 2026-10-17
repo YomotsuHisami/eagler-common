@@ -114,10 +114,15 @@ RollbackJournal::FrameRecord &RollbackJournal::BackRecord()
     return frames_[(firstFrame_ + frameCount_ - 1) % frames_.size()];
 }
 
-void RollbackJournal::EnsureByteCapacity(FrameRecord &record, std::size_t required)
+bool RollbackJournal::EnsureByteCapacity(FrameRecord &record, std::size_t required)
 {
+    if (required > config_.maxBytesPerFrame)
+    {
+        failed_ = true;
+        return false;
+    }
     if (required <= record.byteCapacity)
-        return;
+        return true;
     std::size_t capacity = record.byteCapacity != 0 ? record.byteCapacity
         : std::min<std::size_t>(config_.maxBytesPerFrame, 256 * 1024);
     while (capacity < required)
@@ -129,6 +134,7 @@ void RollbackJournal::EnsureByteCapacity(FrameRecord &record, std::size_t requir
         CopyBytes(bytes.get(), record.bytes.get(), record.byteSize);
     record.bytes = std::move(bytes);
     record.byteCapacity = capacity;
+    return true;
 }
 
 int RollbackJournal::Height(const FrameRecord &record, std::uint32_t index)
@@ -244,7 +250,8 @@ bool RollbackJournal::Touch(void *address, std::size_t size)
     }
 
     const std::size_t offset = record->byteSize;
-    EnsureByteCapacity(*record, offset + size);
+    if (!EnsureByteCapacity(*record, offset + size))
+        return false;
     CopyBytes(record->bytes.get() + offset, address, size);
     record->byteSize += size;
     const auto inserted = static_cast<std::uint32_t>(record->blocks.size());

@@ -87,7 +87,7 @@ private:
     FrameRecord *CurrentRecord();
     FrameRecord &BackRecord();
     const FrameRecord *FindFrame(std::uint32_t frame) const;
-    void EnsureByteCapacity(FrameRecord &record, std::size_t required);
+    bool EnsureByteCapacity(FrameRecord &record, std::size_t required);
     void CopyBytes(void *destination, const void *source, std::size_t size);
     static bool CoversBlock(const FrameRecord &record, const Block &block);
     static int Height(const FrameRecord &record, std::uint32_t index);
